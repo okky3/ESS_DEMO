@@ -162,10 +162,13 @@ def run_simulation(params):
         else:
             moran_BD_step(grid, fit, offsets, params['mu'], rng)
         grid = diffuse(grid, params['m'], offsets, rng)
+        # 更新後の状態に基づいて利得を再計算し平均利得を求める
+        pay = accumulate_payoffs(grid, offsets, params['V'], params['C'])
+        avg_payoff = pay.mean()
         if t % params['draw_skip'] == 0 or t == params['generations']:
             history.append(grid.copy())
         if params['log_metrics']:
-            metrics.append((t, np.mean(grid == 0), pay.mean()))
+            metrics.append((t, np.mean(grid == 0), avg_payoff))
     return history, grid, metrics
 
 # ========================= Streamlit UI =========================
