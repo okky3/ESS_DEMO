@@ -10,8 +10,11 @@ def get_neighbor_offsets(name: str):
     """近傍タイプからオフセット一覧を取得する"""
     if name == "moore":
         offsets = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if not (dx == 0 and dy == 0)]
-    else:  # von_neumann
+    elif name == "von_neumann":
         offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    else:
+        # サポートされていない名称が渡された場合は例外を送出
+        raise ValueError(f"サポートされていない近傍タイプ: {name}")
     return np.array(offsets, dtype=int)
 
 
