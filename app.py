@@ -1,221 +1,267 @@
-import io
-
+# app.py
+# 2次元ホーク・ダブゲームを空間モラン過程でシミュレートしGIFを生成するStreamlitアプリ
+import streamlit as st
 import numpy as np
 from PIL import Image
-import streamlit as st
+import io
+import json
 
-# ========================= 基本的なヘルパー関数 =========================
+# -------------------------------------------------------------
+# 近傍オフセットを取得する
+# -------------------------------------------------------------
+def get_neighbor_offsets(neighborhood):
+    if neighborhood == "vonneumann":
+        return [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    else:  # "moore"
+        return [(-1, -1), (-1, 0), (-1, 1),
+                (0, -1),           (0, 1),
+                (1, -1),  (1, 0),  (1, 1)]
 
-def get_neighbor_offsets(name: str):
-    """近傍タイプからオフセット一覧を取得する"""
-    if name == "moore":
-        offsets = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if not (dx == 0 and dy == 0)]
-    elif name == "von_neumann":
-        offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-    else:
-        # サポートされていない名称が渡された場合は例外を送出
-        raise ValueError(f"サポートされていない近傍タイプ: {name}")
-    return np.array(offsets, dtype=int)
-
-
-def accumulate_payoffs(grid: np.ndarray, offsets: np.ndarray, V: float, C: float):
-    """全セルの利得を近傍対戦で合計"""
-    payoffs = np.zeros_like(grid, dtype=float)
+# -------------------------------------------------------------
+# 各セルの利得を近傍と1回ずつ対戦して加算する
+# -------------------------------------------------------------
+def accumulate_payoffs(state, V, C, offsets):
+    L = state.shape[0]
+    payoff_mat = np.array([
+        [(V - C) / 2, V],
+        [0, V / 2]
+    ])
+    payoffs = np.zeros((L, L), dtype=float)
     for dx, dy in offsets:
-        neigh = np.roll(np.roll(grid, dx, axis=0), dy, axis=1)
-        a = grid
-        b = neigh
-        inter = np.zeros_like(grid, dtype=float)
-        hh = (a == 0) & (b == 0)
-        hd = (a == 0) & (b == 1)
-        dh = (a == 1) & (b == 0)
-        dd = (a == 1) & (b == 1)
-        inter[hh] = (V - C) / 2
-        inter[hd] = V
-        inter[dh] = 0
-        inter[dd] = V / 2
-        payoffs += inter
+        neigh = np.roll(state, shift=dx, axis=0)
+        neigh = np.roll(neigh, shift=dy, axis=1)
+        payoffs += payoff_mat[state, neigh]
     return payoffs
 
-
-def fitness_from_payoff(payoff: np.ndarray, w: float, mapping: str, shift_amount: float):
-    """利得から適応度へ変換"""
+# -------------------------------------------------------------
+# 利得から適応度へマッピング
+# -------------------------------------------------------------
+def fitness_from_payoff(payoff, w, mapping, shift_amount):
     f = 1 - w + w * payoff
     if mapping == "clip0":
         f = np.clip(f, 0, None)
-    else:  # shift
+    else:  # "shift"
         f = f + shift_amount
     return f
 
-
-def init_state(L: int, mode: str, p0: float, num_patches: int, patch_radius: int,
-               patch_strategy: str, seed: int):
-    """初期状態を生成"""
+# -------------------------------------------------------------
+# 初期状態の生成
+# -------------------------------------------------------------
+def init_state(L, mode, p0, num_patches, patch_radius, patch_strategy, seed):
     rng = np.random.default_rng(seed)
-    grid = np.where(rng.random((L, L)) < p0, 0, 1)
+    state = (rng.random((L, L)) >= p0).astype(np.int8)
     if mode == "patches":
-        for _ in range(num_patches):
-            cx, cy = rng.integers(L, size=2)
-            rr = patch_radius
-            for dx in range(-rr, rr + 1):
-                for dy in range(-rr, rr + 1):
-                    if dx * dx + dy * dy <= rr * rr:
-                        x = (cx + dx) % L
-                        y = (cy + dy) % L
-                        if patch_strategy == "hawk":
-                            grid[x, y] = 0
-                        elif patch_strategy == "dove":
-                            grid[x, y] = 1
-                        else:  # mixed
-                            grid[x, y] = 0 if rng.random() < p0 else 1
-    return grid
+        x = np.arange(L)
+        y = np.arange(L)
+        X, Y = np.meshgrid(x, y, indexing="ij")
+        centers = rng.integers(0, L, size=(num_patches, 2))
+        for cx, cy in centers:
+            dx = np.minimum(np.abs(X - cx), L - np.abs(X - cx))
+            dy = np.minimum(np.abs(Y - cy), L - np.abs(Y - cy))
+            mask = dx**2 + dy**2 <= patch_radius**2
+            if patch_strategy == "hawk":
+                state[mask] = 0
+            elif patch_strategy == "dove":
+                state[mask] = 1
+            else:  # mixed
+                state[mask] = (rng.random(np.count_nonzero(mask)) >= p0).astype(np.int8)
+    return state, rng
 
-
-def moran_DB_step(grid: np.ndarray, fitness: np.ndarray, offsets: np.ndarray, mu: float, rng):
-    """Death-Birth 更新"""
-    L = grid.shape[0]
-    x, y = rng.integers(L, size=2)
-    neigh_coords = [( (x + dx) % L, (y + dy) % L) for dx, dy in offsets]
-    neigh_fit = np.array([fitness[nx, ny] for nx, ny in neigh_coords])
+# -------------------------------------------------------------
+# Death-Birth更新
+# -------------------------------------------------------------
+def moran_DB_step(state, fitness, offsets, mu, rng):
+    L = state.shape[0]
+    i = rng.integers(L)
+    j = rng.integers(L)
+    neigh_coords = [((i + dx) % L, (j + dy) % L) for dx, dy in offsets]
+    neigh_fit = np.array([fitness[x, y] for x, y in neigh_coords])
     total = neigh_fit.sum()
-    if total <= 0:
-        idx = rng.integers(len(neigh_coords))
+    if total == 0:
+        probs = np.ones(len(neigh_coords)) / len(neigh_coords)
     else:
-        idx = rng.choice(len(neigh_coords), p=neigh_fit / total)
+        probs = neigh_fit / total
+    idx = rng.choice(len(neigh_coords), p=probs)
     px, py = neigh_coords[idx]
-    strategy = grid[px, py]
+    s = state[px, py]
     if rng.random() < mu:
-        strategy = 1 - strategy
-    grid[x, y] = strategy
+        s = 1 - s
+    state[i, j] = s
+    return state
 
-
-def moran_BD_step(grid: np.ndarray, fitness: np.ndarray, offsets: np.ndarray, mu: float, rng):
-    """Birth-Death 更新"""
-    L = grid.shape[0]
-    flat_fit = fitness.ravel()
-    total = flat_fit.sum()
-    if total <= 0:
-        idx = rng.integers(flat_fit.size)
+# -------------------------------------------------------------
+# Birth-Death更新
+# -------------------------------------------------------------
+def moran_BD_step(state, fitness, offsets, mu, rng):
+    L = state.shape[0]
+    total = fitness.sum()
+    if total == 0:
+        idx = rng.integers(L * L)
     else:
-        idx = rng.choice(flat_fit.size, p=flat_fit / total)
-    x, y = divmod(idx, L)
+        flat = (fitness / total).ravel()
+        idx = rng.choice(L * L, p=flat)
+    i, j = divmod(idx, L)
     dx, dy = offsets[rng.integers(len(offsets))]
-    nx, ny = (x + dx) % L, (y + dy) % L
-    strategy = grid[x, y]
+    ni = (i + dx) % L
+    nj = (j + dy) % L
+    s = state[i, j]
     if rng.random() < mu:
-        strategy = 1 - strategy
-    grid[nx, ny] = strategy
+        s = 1 - s
+    state[ni, nj] = s
+    return state
 
+# -------------------------------------------------------------
+# 拡散処理（近傍と入れ替え）
+# -------------------------------------------------------------
+def diffuse(state, m, offsets, rng):
+    L = state.shape[0]
+    cells = np.argwhere(rng.random((L, L)) < m)
+    for i, j in cells:
+        dx, dy = offsets[rng.integers(len(offsets))]
+        ni = (i + dx) % L
+        nj = (j + dy) % L
+        state[i, j], state[ni, nj] = state[ni, nj], state[i, j]
 
-def diffuse(grid: np.ndarray, m: float, offsets: np.ndarray, rng):
-    """拡散ステップ：確率mで近傍と交換"""
-    if m <= 0:
-        return grid
-    L = grid.shape[0]
-    for x in range(L):
-        for y in range(L):
-            if rng.random() < m:
-                dx, dy = offsets[rng.integers(len(offsets))]
-                nx, ny = (x + dx) % L, (y + dy) % L
-                grid[x, y], grid[nx, ny] = grid[nx, ny], grid[x, y]
-    return grid
-
-
-def grid_to_rgb(grid: np.ndarray):
-    """戦略グリッドをRGB画像へ"""
-    rgb = np.zeros(grid.shape + (3,), dtype=np.uint8)
-    rgb[grid == 0] = [255, 0, 0]
-    rgb[grid == 1] = [0, 0, 255]
-    return rgb
-
-
-def make_gif_from_history(history, duration):
-    """履歴からGIFを生成"""
-    frames = [Image.fromarray(grid_to_rgb(h)) for h in history]
-    buf = io.BytesIO()
-    frames[0].save(buf, format="GIF", save_all=True, append_images=frames[1:],
-                   duration=duration, loop=0)
-    buf.seek(0)
-    return buf
-
-
-def download_metrics_csv(metrics):
-    """メトリクスをCSV形式に変換"""
-    lines = ["t,hawk_ratio,avg_payoff"]
-    for t, hr, ap in metrics:
-        lines.append(f"{t},{hr},{ap}")
-    return "\n".join(lines).encode()
-
-
+# -------------------------------------------------------------
+# シミュレーション本体
+# -------------------------------------------------------------
 def run_simulation(params):
-    """シミュレーションを実行"""
-    L = params['L']
-    rng = np.random.default_rng(params['seed'])
-    offsets = get_neighbor_offsets(params['neighborhood'])
-    grid = init_state(L, params['init_mode'], params['p0'], params['num_patches'],
-                      params['patch_radius'], params['patch_strategy'], params['seed'])
-    history = [grid.copy()]
+    L = params["L"]
+    offsets = get_neighbor_offsets(params["neighborhood"])
+    state, rng = init_state(
+        L,
+        params["init_mode"],
+        params["p0"],
+        params["num_patches"],
+        params["patch_radius"],
+        params["patch_strategy"],
+        params["seed"],
+    )
+    history = [state.copy()]
     metrics = []
-    for t in range(1, params['generations'] + 1):
-        pay = accumulate_payoffs(grid, offsets, params['V'], params['C'])
-        fit = fitness_from_payoff(pay, params['w'], params['fitness_mapping'],
-                                  params['shift_amount'])
-        if params['update_rule'] == 'DB':
-            moran_DB_step(grid, fit, offsets, params['mu'], rng)
+    payoffs = accumulate_payoffs(state, params["V"], params["C"], offsets)
+    if params["log_metrics"]:
+        metrics.append((0, np.mean(state == 0), payoffs.mean()))
+    for t in range(1, params["generations"] + 1):
+        fitness = fitness_from_payoff(
+            payoffs, params["w"], params["fitness_mapping"], params["shift_amount"]
+        )
+        if params["update_rule"] == "BD":
+            moran_BD_step(state, fitness, offsets, params["mu"], rng)
         else:
-            moran_BD_step(grid, fit, offsets, params['mu'], rng)
-        grid = diffuse(grid, params['m'], offsets, rng)
-        # 更新後の状態に基づいて利得を再計算し平均利得を求める
-        pay = accumulate_payoffs(grid, offsets, params['V'], params['C'])
-        avg_payoff = pay.mean()
-        if t % params['draw_skip'] == 0 or t == params['generations']:
-            history.append(grid.copy())
-        if params['log_metrics']:
-            metrics.append((t, np.mean(grid == 0), avg_payoff))
-    return history, grid, metrics
+            moran_DB_step(state, fitness, offsets, params["mu"], rng)
+        if params["m"] > 0:
+            diffuse(state, params["m"], offsets, rng)
+        payoffs = accumulate_payoffs(state, params["V"], params["C"], offsets)
+        if params["log_metrics"]:
+            metrics.append((t, np.mean(state == 0), payoffs.mean()))
+        history.append(state.copy())
+    return history, metrics
 
-# ========================= Streamlit UI =========================
+# -------------------------------------------------------------
+# グリッドをRGB画像へ変換
+# -------------------------------------------------------------
+def grid_to_rgb(state):
+    L = state.shape[0]
+    img = np.zeros((L, L, 3), dtype=np.uint8)
+    img[state == 0] = np.array([255, 0, 0], dtype=np.uint8)  # ホーク: 赤
+    img[state == 1] = np.array([0, 0, 255], dtype=np.uint8)  # ダブ: 青
+    return img
 
-st.title("2D Hawk-Dove Moran Game")
+# -------------------------------------------------------------
+# 履歴からGIFを作成
+# -------------------------------------------------------------
+def make_gif_from_history(history, duration, draw_skip):
+    frames = [Image.fromarray(grid_to_rgb(g)) for g in history[::draw_skip]]
+    buf = io.BytesIO()
+    frames[0].save(
+        buf,
+        format="GIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=duration,
+        loop=0,
+    )
+    return buf.getvalue()
+
+# -------------------------------------------------------------
+# メトリクスCSVを生成
+# -------------------------------------------------------------
+def download_metrics_csv(metrics):
+    buf = io.StringIO()
+    buf.write("t,hawk_ratio,avg_payoff\n")
+    for t, h, p in metrics:
+        buf.write(f"{t},{h},{p}\n")
+    return buf.getvalue().encode("utf-8")
+
+# -------------------------------------------------------------
+# Streamlit UI
+# -------------------------------------------------------------
+st.title("ホーク・ダブ空間モランゲーム")
 
 with st.sidebar:
     st.header("設定")
-    L = st.number_input("L", min_value=10, max_value=200, value=40)
-    neighborhood = st.selectbox("近傍", ["moore", "von_neumann"], index=0)
-    update_rule = st.selectbox("更新規則", ["DB", "BD"], index=0)
-    V = st.number_input("V", value=2.0)
-    C = st.number_input("C", value=4.0)
-    fitness_mapping = st.selectbox("適応度マッピング", ["clip0", "shift"], index=0)
-    shift_amount = st.number_input("shift_amount", value=0.0)
-    w = st.number_input("選択圧 w", value=1.0)
-    mu = st.number_input("突然変異率 μ", min_value=0.0, max_value=1.0, value=0.0)
-    generations = st.number_input("世代数", min_value=1, value=200)
-    m = st.number_input("拡散確率 m", min_value=0.0, max_value=1.0, value=0.0)
-    init_mode = st.selectbox("初期状態", ["random", "patches"], index=0)
-    p0 = st.number_input("初期タカ率 p0", min_value=0.0, max_value=1.0, value=0.5)
-    num_patches = st.number_input("パッチ数", min_value=1, value=3)
-    patch_radius = st.number_input("パッチ半径", min_value=1, value=5)
-    patch_strategy = st.selectbox("パッチ戦略", ["hawk", "dove", "mixed"], index=0)
-    draw_skip = st.number_input("描画間隔", min_value=1, value=2)
-    frame_ms = st.number_input("フレーム時間(ms)", min_value=10, value=80)
-    seed = st.number_input("乱数シード", value=0)
+    L = st.number_input("L (格子サイズ)", min_value=10, max_value=200, value=40, step=1)
+    neighborhood = st.selectbox("近傍", ["moore", "vonneumann"])
+    update_rule = st.selectbox("更新ルール", ["DB", "BD"])
+    V = st.number_input("資源価値 V", value=2.0)
+    C = st.number_input("闘争コスト C", value=4.0)
+    fitness_mapping = st.selectbox("適応度マッピング", ["clip0", "shift"])
+    shift_amount = st.number_input("シフト量", value=0.0)
+    w = st.number_input("選択強度 w", value=1.0)
+    mu = st.number_input("突然変異率 μ", value=0.0)
+    generations = st.number_input("世代数", min_value=1, value=200, step=1)
+    m = st.number_input("拡散確率 m", value=0.0)
+    init_mode = st.selectbox("初期状態", ["random", "patches"])
+    p0 = st.number_input("初期ホーク比 p0", min_value=0.0, max_value=1.0, value=0.5)
+    num_patches = st.number_input("パッチ数", min_value=1, value=3, step=1)
+    patch_radius = st.number_input("パッチ半径", min_value=1, value=5, step=1)
+    patch_strategy = st.selectbox("パッチ戦略", ["hawk", "dove", "mixed"])
+    draw_skip = st.number_input("描画間隔 (k世代ごと)", min_value=1, value=2, step=1)
+    frame_duration = st.number_input("フレーム時間 (ms)", min_value=20, value=80, step=10)
+    seed = st.number_input("乱数シード", value=0, step=1)
     log_metrics = st.checkbox("メトリクスを記録", value=False)
-    run = st.button("Run simulation")
 
-params = dict(L=L, neighborhood=neighborhood, update_rule=update_rule, V=V, C=C,
-              fitness_mapping=fitness_mapping, shift_amount=shift_amount, w=w, mu=mu,
-              generations=generations, m=m, init_mode=init_mode, p0=p0,
-              num_patches=num_patches, patch_radius=patch_radius,
-              patch_strategy=patch_strategy, draw_skip=draw_skip, seed=seed,
-              log_metrics=log_metrics)
+config = {
+    "L": L,
+    "neighborhood": neighborhood,
+    "update_rule": update_rule,
+    "V": V,
+    "C": C,
+    "fitness_mapping": fitness_mapping,
+    "shift_amount": shift_amount,
+    "w": w,
+    "mu": mu,
+    "generations": generations,
+    "m": m,
+    "init_mode": init_mode,
+    "p0": p0,
+    "num_patches": num_patches,
+    "patch_radius": patch_radius,
+    "patch_strategy": patch_strategy,
+    "draw_skip": draw_skip,
+    "frame_duration": frame_duration,
+    "seed": seed,
+    "log_metrics": log_metrics,
+}
 
-if run:
-    history, final_grid, metrics = run_simulation(params)
-    gif_buf = make_gif_from_history(history, duration=frame_ms)
-    st.image(gif_buf.getvalue(), format="GIF")
-    st.download_button("Download GIF", gif_buf.getvalue(), file_name="hawk_dove.gif")
-    st.image(grid_to_rgb(final_grid))
-    st.json(params)
+if st.button("Run simulation"):
+    history, metrics = run_simulation(config)
+    gif_bytes = make_gif_from_history(history, frame_duration, draw_skip)
+    st.image(gif_bytes, caption="進化の様子", format="GIF")
+    st.download_button(
+        "Download GIF",
+        data=gif_bytes,
+        file_name="hawk_dove.gif",
+        mime="image/gif",
+    )
+    st.image(grid_to_rgb(history[-1]), caption="最終グリッド")
+    st.json(config)
     if log_metrics:
         csv_bytes = download_metrics_csv(metrics)
-        st.download_button("Download metrics", csv_bytes, file_name="metrics.csv")
+        st.download_button(
+            "メトリクスCSVをダウンロード",
+            data=csv_bytes,
+            file_name="metrics.csv",
+            mime="text/csv",
+        )
