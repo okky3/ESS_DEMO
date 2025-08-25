@@ -143,11 +143,11 @@ st.title("タカ派、ハト派（ゲーム理論）")
 with st.sidebar:
     st.header("パラメータ")
     L = st.slider("グリッドの大きさ L × L", 20, 200, 40, step=5)
-    V = st.number_input("価値 (V)", value=1.0, step=0.1)
-    C = st.number_input("コスト (C)", value=2.0, step=0.1)
+    V = st.number_input("資源の価値(V)", value=1.0, step=0.1)
+    C = st.number_input("戦争のコスト(C)", value=2.0, step=0.1)
     w = st.slider("選択強度 (w)", 0.0, 1.0, 0.9, step=0.05)
 
-    neighborhood = st.radio("近隣範囲", ["Moore", "Von Neumann"], index=0)
+    neighborhood = "Moore"
     update_rule = st.radio("更新ルール", ["Death–Birth (DB)", "Birth–Death (BD)"], index=0)
 
     mapping_mode = st.radio("適応度の計算方法", ["Clip to zero", "Shift"], index=0,
