@@ -160,7 +160,7 @@ with st.sidebar:
 
     fps = st.slider("Animation FPS", 1, 30, 8)
     max_steps = st.number_input("Max steps while running", value=10_000, step=100)
-    display_interval = st.number_input("Display every N generations", value=1, min_value=1, step=1)
+    display_interval = st.number_input("Display every N generations", value=50, min_value=1, step=1)
 
 # Session state setup
 if "rng" not in st.session_state or st.session_state.get("seed", None) != seed:
@@ -218,14 +218,15 @@ if (st.session_state.running or st.session_state.get("last_clicked") == "Step On
     st.session_state["grid"] = new_grid
     st.session_state["step"] += 1
 
-# Render current grid
-img = grid_to_image(st.session_state["grid"])  # RGB
+# Render current grid at specified intervals
 col_img, _ = st.columns([7, 3])
-col_img.image(
-    img,
-    caption=f"L={L}, Step={st.session_state['step']} (Hawk=red, Dove=blue)",
-    use_column_width=True,
-)
+if st.session_state["step"] % int(display_interval) == 0:
+    img = grid_to_image(st.session_state["grid"])  # RGB
+    col_img.image(
+        img,
+        caption=f"L={L}, Step={st.session_state['step']} (Hawk=red, Dove=blue)",
+        use_column_width=True,
+    )
 
 # Auto-refresh to animate when running
 if st.session_state.running:
