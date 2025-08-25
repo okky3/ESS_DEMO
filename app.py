@@ -142,7 +142,7 @@ st.title("Hawk–Dove Game — Spatial Moran Process (In‑page Animation)")
 
 with st.sidebar:
     st.header("パラメータ")
-    L = st.slider("グリッドの大きさ L × L", 20, 200, 80, step=5)
+    L = st.slider("グリッドの大きさ L × L", 20, 200, 40, step=5)
     V = st.number_input("価値 (V)", value=1.0, step=0.1)
     C = st.number_input("コスト (C)", value=2.0, step=0.1)
     w = st.slider("選択強度 (w)", 0.0, 1.0, 0.9, step=0.05)
@@ -162,7 +162,7 @@ with st.sidebar:
 
     fps = st.slider("アニメーションFPS", 1, 30, 8)
     max_steps = st.number_input("世代数（最大）", value=10_000, step=100)
-    display_interval = st.number_input("N世代ごとに表示", value=50, min_value=1, step=1)
+    display_interval = st.number_input("N世代ごとに表示", value=10, min_value=1, step=1)
 
 # Session state setup
 if "rng" not in st.session_state or st.session_state.get("seed", None) != seed:
