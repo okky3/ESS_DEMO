@@ -228,11 +228,11 @@ if st.session_state.running or st.session_state.get("last_clicked") == "Step Onc
 
 # Render current grid
 img = grid_to_image(st.session_state["grid"])  # RGB
-canvas = st.empty()
-canvas.image(
+col_img, _ = st.columns([4, 1])
+col_img.image(
     img,
     caption=f"L={L}, Step={st.session_state['step']} (Hawk=red, Dove=blue)",
-    width=int(img.shape[1] * 2 / 3),
+    use_column_width=True,
 )
 
 # Auto-refresh to animate when running
