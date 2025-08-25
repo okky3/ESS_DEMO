@@ -138,7 +138,7 @@ def grid_to_image(grid):
 # UI
 # -----------------------------
 st.set_page_config(page_title="Hawk–Dove Spatial Moran (Animated)", layout="wide")
-st.title("Hawk–Dove Game — Spatial Moran Process (In‑page Animation)")
+st.title("タカ派、ハト派（ゲーム理論）")
 
 with st.sidebar:
     st.header("パラメータ")
