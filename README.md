@@ -23,14 +23,5 @@ pip install streamlit numpy pillow
 streamlit run app.py
 ```
 
-### アブレーションテスト
-`run_ablation_pipeline.py` を用いてアブレーションテストを実行できます。全ターゲットを指定して実行する例を以下に示します。
-
-```bash
-python run_ablation_pipeline.py --target all
-```
-
-`--target` オプションにはテスト対象を指定します。省略した場合は `all` が用いられます。
-
 ## ライセンス
 本リポジトリは MIT ライセンスで提供されています。
