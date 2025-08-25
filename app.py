@@ -248,7 +248,7 @@ config = {
 if st.button("Run simulation"):
     history, metrics = run_simulation(config)
     gif_bytes = make_gif_from_history(history, frame_duration, draw_skip)
-    st.image(gif_bytes, caption="進化の様子", format="GIF")
+    st.image(gif_bytes, caption="進化の様子", output_format="GIF")
     st.download_button(
         "Download GIF",
         data=gif_bytes,
