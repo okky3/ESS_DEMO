@@ -141,28 +141,28 @@ st.set_page_config(page_title="Hawk–Dove Spatial Moran (Animated)", layout="wi
 st.title("Hawk–Dove Game — Spatial Moran Process (In‑page Animation)")
 
 with st.sidebar:
-    st.header("Parameters")
-    L = st.slider("Grid size L × L", 20, 200, 80, step=5)
-    V = st.number_input("Value (V)", value=1.0, step=0.1)
-    C = st.number_input("Cost (C)", value=2.0, step=0.1)
-    w = st.slider("Selection intensity (w)", 0.0, 1.0, 0.9, step=0.05)
+    st.header("パラメータ")
+    L = st.slider("グリッドの大きさ L × L", 20, 200, 80, step=5)
+    V = st.number_input("価値 (V)", value=1.0, step=0.1)
+    C = st.number_input("コスト (C)", value=2.0, step=0.1)
+    w = st.slider("選択強度 (w)", 0.0, 1.0, 0.9, step=0.05)
 
-    neighborhood = st.radio("Neighborhood", ["Moore", "Von Neumann"], index=0)
-    update_rule = st.radio("Update rule", ["Death–Birth (DB)", "Birth–Death (BD)"], index=0)
+    neighborhood = st.radio("近隣範囲", ["Moore", "Von Neumann"], index=0)
+    update_rule = st.radio("更新ルール", ["Death–Birth (DB)", "Birth–Death (BD)"], index=0)
 
-    mapping_mode = st.radio("Fitness mapping", ["Clip to zero", "Shift"], index=0,
+    mapping_mode = st.radio("適応度の計算方法", ["Clip to zero", "Shift"], index=0,
                             help="Base mapping: f = 1 - w + w * payoff. 'Clip' clamps negatives to 0. 'Shift' adds a constant shift.")
-    shift_amount = st.number_input("Shift amount (if 'Shift')", value=0.0, step=0.1)
-    mu = st.number_input("Mutation rate μ", min_value=0.0, max_value=1.0, value=0.0, step=0.001, format="%.3f")
+    shift_amount = st.number_input("シフト量（Shiftの場合）", value=0.0, step=0.1)
+    mu = st.number_input("突然変異率 μ", min_value=0.0, max_value=1.0, value=0.0, step=0.001, format="%.3f")
     replacement_rate_pct = st.slider("世代交代率（%）", 1, 100, 10)
     replacement_rate = replacement_rate_pct / 100
 
-    init_hawk_frac = st.slider("Initial Hawks fraction", 0.0, 1.0, 0.5, step=0.05)
-    seed = st.number_input("Random seed", value=42, step=1)
+    init_hawk_frac = st.slider("初期タカ割合", 0.0, 1.0, 0.5, step=0.05)
+    seed = st.number_input("乱数シード", value=42, step=1)
 
-    fps = st.slider("Animation FPS", 1, 30, 8)
-    max_steps = st.number_input("Max steps while running", value=10_000, step=100)
-    display_interval = st.number_input("Display every N generations", value=50, min_value=1, step=1)
+    fps = st.slider("アニメーションFPS", 1, 30, 8)
+    max_steps = st.number_input("世代数（最大）", value=10_000, step=100)
+    display_interval = st.number_input("N世代ごとに表示", value=50, min_value=1, step=1)
 
 # Session state setup
 if "rng" not in st.session_state or st.session_state.get("seed", None) != seed:
