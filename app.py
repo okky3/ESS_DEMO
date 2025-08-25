@@ -233,7 +233,7 @@ if st.session_state["step"] % int(display_interval) == 0:
     col_img.image(
         img,
         caption=f"L={L}, Step={st.session_state['step']} (Hawk=red, Dove=blue)",
-        use_column_width=True,
+        use_container_width=True,
     )
 
 # Auto-refresh to animate when running
