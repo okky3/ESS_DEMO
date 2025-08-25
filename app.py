@@ -161,7 +161,7 @@ with st.sidebar:
     fps = st.slider("Animation FPS", 1, 30, 8)
     max_steps = st.number_input("Max steps while running", value=10_000, step=100)
     run_for = st.number_input("Run generations (on Start)", value=200, step=10)
-    display_interval = st.number_input("Display every N generations", value=1, min_value=1, step=1)
+    display_interval = st.number_input("Display every N generations", value=50, min_value=1, step=1)
 
 # Session state setup
 if "rng" not in st.session_state or st.session_state.get("seed", None) != seed:
@@ -227,13 +227,15 @@ if st.session_state.running or st.session_state.get("last_clicked") == "Step Onc
     st.session_state["step"] += 1
 
 # Render current grid
-img = grid_to_image(st.session_state["grid"])  # RGB
 col_img, _ = st.columns([4, 1])
-col_img.image(
-    img,
-    caption=f"L={L}, Step={st.session_state['step']} (Hawk=red, Dove=blue)",
-    use_column_width=True,
-)
+# 指定した世代ごとに表示を更新
+if not st.session_state.running or st.session_state["step"] % display_interval == 0:
+    img = grid_to_image(st.session_state["grid"])  # RGB
+    col_img.image(
+        img,
+        caption=f"L={L}, Step={st.session_state['step']} (Hawk=red, Dove=blue)",
+        use_column_width=True,
+    )
 
 # Auto-refresh to animate when running
 if st.session_state.running:
@@ -247,7 +249,8 @@ if st.session_state.running:
         st.session_state.running = False
         st.session_state["target_end"] = None
     else:
-        # Control the frame rate and continue
-        time.sleep(1.0 / max(1, fps))
+        # 表示するタイミングのみ待機し、次の処理へ
+        if st.session_state["step"] % display_interval == 0:
+            time.sleep(1.0 / max(1, fps))
         _safe_rerun()
 
