@@ -228,7 +228,7 @@ if st.session_state.running or st.session_state.get("last_clicked") == "Step Onc
 
 # Render current grid
 img = grid_to_image(st.session_state["grid"])  # RGB
-col_img, _ = st.columns([4, 1])
+col_img, _ = st.columns([7, 3])
 col_img.image(
     img,
     caption=f"L={L}, Step={st.session_state['step']} (Hawk=red, Dove=blue)",
