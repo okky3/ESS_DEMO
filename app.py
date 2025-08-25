@@ -154,6 +154,8 @@ with st.sidebar:
                             help="Base mapping: f = 1 - w + w * payoff. 'Clip' clamps negatives to 0. 'Shift' adds a constant shift.")
     shift_amount = st.number_input("Shift amount (if 'Shift')", value=0.0, step=0.1)
     mu = st.number_input("Mutation rate μ", min_value=0.0, max_value=1.0, value=0.0, step=0.001, format="%.3f")
+    replacement_rate_pct = st.slider("世代交代率（%）", 1, 100, 10)
+    replacement_rate = replacement_rate_pct / 100
 
     init_hawk_frac = st.slider("Initial Hawks fraction", 0.0, 1.0, 0.5, step=0.05)
     seed = st.number_input("Random seed", value=42, step=1)
@@ -176,6 +178,8 @@ if "grid" not in st.session_state or st.session_state.get("L", None) != L:
 
 if "running" not in st.session_state:
     st.session_state["running"] = False
+if "do_step" not in st.session_state:
+    st.session_state["do_step"] = False
 
 # Controls row
 col1, col2, col3, col4, col5 = st.columns([1,1,1,1,2])
@@ -188,8 +192,7 @@ with col2:
 with col3:
     if st.button("Step Once ⏭"):
         st.session_state.running = False
-        st.session_state["step"] += 1
-        # perform one update below
+        st.session_state["do_step"] = True
 with col4:
     if st.button("Reset ♻"):
         rng = init_rng(seed)
@@ -202,21 +205,26 @@ with col4:
 with col5:
     st.markdown(f"**Step:** {st.session_state['step']}")
 
-# Compute payoffs and fitness for current grid
+# 更新処理
 rng = st.session_state["rng"]
 grid = st.session_state["grid"]
-P = compute_payoffs(grid, V, C, neighborhood)
-F = map_fitness(P, w, mapping_mode, shift_amount)
-
-# Perform one update if stepping or running and below max_steps
-if (st.session_state.running or st.session_state.get("last_clicked") == "Step Once ⏭") \
+if (st.session_state.running or st.session_state.get("do_step", False)) \
         and st.session_state["step"] < int(max_steps):
-    if update_rule.startswith("Death"):
-        new_grid = death_birth_update(grid, rng, F, neighborhood, mu)
-    else:
-        new_grid = birth_death_update(grid, rng, F, neighborhood, mu)
-    st.session_state["grid"] = new_grid
-    st.session_state["step"] += 1
+    num_updates = max(1, int(replacement_rate * L * L))
+    # 世代交代率に基づいて複数回更新
+    for _ in range(num_updates):
+        P = compute_payoffs(grid, V, C, neighborhood)
+        F = map_fitness(P, w, mapping_mode, shift_amount)
+        if update_rule.startswith("Death"):
+            grid = death_birth_update(grid, rng, F, neighborhood, mu)
+        else:
+            grid = birth_death_update(grid, rng, F, neighborhood, mu)
+        st.session_state["step"] += 1
+        if st.session_state["step"] >= int(max_steps):
+            st.session_state.running = False
+            break
+    st.session_state["grid"] = grid
+    st.session_state["do_step"] = False
 
 # Render current grid at specified intervals
 col_img, _ = st.columns([7, 3])
