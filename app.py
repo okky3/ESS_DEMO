@@ -250,4 +250,4 @@ if st.session_state.running:
         # Control the frame rate and continue
         time.sleep(1.0 / max(1, fps))
         _safe_rerun()
-ß
+
