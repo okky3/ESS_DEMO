@@ -160,7 +160,6 @@ with st.sidebar:
 
     fps = st.slider("Animation FPS", 1, 30, 8)
     max_steps = st.number_input("Max steps while running", value=10_000, step=100)
-    run_for = st.number_input("Run generations (on Start)", value=200, step=10)
     display_interval = st.number_input("Display every N generations", value=1, min_value=1, step=1)
 
 # Session state setup
@@ -177,25 +176,18 @@ if "grid" not in st.session_state or st.session_state.get("L", None) != L:
 
 if "running" not in st.session_state:
     st.session_state["running"] = False
-if "target_end" not in st.session_state:
-    st.session_state["target_end"] = None
 
 # Controls row
 col1, col2, col3, col4, col5 = st.columns([1,1,1,1,2])
 with col1:
     if st.button("Start ▶"):
         st.session_state.running = True
-        # Set the target generation to stop at
-        current = st.session_state.get("step", 0)
-        st.session_state["target_end"] = min(current + int(run_for), int(max_steps))
 with col2:
     if st.button("Stop ⏸"):
         st.session_state.running = False
-        st.session_state["target_end"] = None
 with col3:
     if st.button("Step Once ⏭"):
         st.session_state.running = False
-        st.session_state["target_end"] = None
         st.session_state["step"] += 1
         # perform one update below
 with col4:
@@ -206,7 +198,6 @@ with col4:
         st.session_state["grid"] = grid
         st.session_state["step"] = 0
         st.session_state.running = False
-        st.session_state["target_end"] = None
 
 with col5:
     st.markdown(f"**Step:** {st.session_state['step']}")
@@ -217,8 +208,9 @@ grid = st.session_state["grid"]
 P = compute_payoffs(grid, V, C, neighborhood)
 F = map_fitness(P, w, mapping_mode, shift_amount)
 
-# Perform one update if stepping or running
-if st.session_state.running or st.session_state.get("last_clicked") == "Step Once ⏭":
+# Perform one update if stepping or running and below max_steps
+if (st.session_state.running or st.session_state.get("last_clicked") == "Step Once ⏭") \
+        and st.session_state["step"] < int(max_steps):
     if update_rule.startswith("Death"):
         new_grid = death_birth_update(grid, rng, F, neighborhood, mu)
     else:
@@ -237,15 +229,9 @@ col_img.image(
 
 # Auto-refresh to animate when running
 if st.session_state.running:
-    # Determine the stopping point
-    if st.session_state.get("target_end") is None:
-        st.session_state["target_end"] = min(st.session_state.get("step", 0) + int(run_for), int(max_steps))
-    target_end = int(st.session_state["target_end"]) if st.session_state["target_end"] is not None else int(max_steps)
-
-    # Stop automatically once we reach the target generation or max_steps
-    if st.session_state["step"] >= min(int(max_steps), target_end):
+    # Stop automatically once we reach max_steps
+    if st.session_state["step"] >= int(max_steps):
         st.session_state.running = False
-        st.session_state["target_end"] = None
     else:
         # Control the frame rate and continue
         time.sleep(1.0 / max(1, fps))
