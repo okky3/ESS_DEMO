@@ -229,7 +229,11 @@ if st.session_state.running or st.session_state.get("last_clicked") == "Step Onc
 # Render current grid
 img = grid_to_image(st.session_state["grid"])  # RGB
 canvas = st.empty()
-canvas.image(img, caption=f"L={L}, Step={st.session_state['step']} (Hawk=red, Dove=blue)", use_container_width=True)
+canvas.image(
+    img,
+    caption=f"L={L}, Step={st.session_state['step']} (Hawk=red, Dove=blue)",
+    width=int(img.shape[1] * 2 / 3),
+)
 
 # Auto-refresh to animate when running
 if st.session_state.running:
