@@ -125,9 +125,49 @@ def birth_death_update(grid, rng, fitness, neighborhood, mu):
     return new_grid
 
 
-def grid_to_image(grid):
-    # Map Hawk=0 -> red, Dove=1 -> blue
-    L = grid.shape[0]
+# -------------------------------------------------------------
+# シミュレーション本体
+# -------------------------------------------------------------
+def run_simulation(params):
+    L = params["L"]
+    offsets = get_neighbor_offsets(params["neighborhood"])
+    state, rng = init_state(
+        L,
+        params["init_mode"],
+        params["p0"],
+        params["num_patches"],
+        params["patch_radius"],
+        params["patch_strategy"],
+        params["seed"],
+    )
+    history = [state.copy()]
+    metrics = []
+    payoffs = accumulate_payoffs(state, params["V"], params["C"], offsets)
+    if params["log_metrics"]:
+        metrics.append((0, np.mean(state == 0), payoffs.mean()))
+    replace_steps = int(L * L * params["replace_rate"] / 100)
+    for t in range(1, params["generations"] + 1):
+        for _ in range(replace_steps):
+            fitness = fitness_from_payoff(
+                payoffs, params["w"], params["fitness_mapping"], params["shift_amount"]
+            )
+            if params["update_rule"] == "BD":
+                moran_BD_step(state, fitness, offsets, params["mu"], rng)
+            else:
+                moran_DB_step(state, fitness, offsets, params["mu"], rng)
+            if params["m"] > 0:
+                diffuse(state, params["m"], offsets, rng)
+            payoffs = accumulate_payoffs(state, params["V"], params["C"], offsets)
+        if params["log_metrics"]:
+            metrics.append((t, np.mean(state == 0), payoffs.mean()))
+        history.append(state.copy())
+    return history, metrics
+
+# -------------------------------------------------------------
+# グリッドをRGB画像へ変換
+# -------------------------------------------------------------
+def grid_to_rgb(state):
+    L = state.shape[0]
     img = np.zeros((L, L, 3), dtype=np.uint8)
     img[grid == H] = np.array([220, 20, 60], dtype=np.uint8)   # crimson-ish
     img[grid == D] = np.array([65, 105, 225], dtype=np.uint8)  # royal blue-ish
@@ -141,14 +181,59 @@ st.set_page_config(page_title="Hawk–Dove Spatial Moran (Animated)", layout="wi
 st.title("Hawk–Dove Game — Spatial Moran Process (In‑page Animation)")
 
 with st.sidebar:
-    st.header("Parameters")
-    L = st.slider("Grid size L × L", 20, 200, 80, step=5)
-    V = st.number_input("Value (V)", value=1.0, step=0.1)
-    C = st.number_input("Cost (C)", value=2.0, step=0.1)
-    w = st.slider("Selection intensity (w)", 0.0, 1.0, 0.9, step=0.05)
+    st.header("設定")
+    L = st.number_input("L (格子サイズ)", min_value=10, max_value=200, value=40, step=1)
+    neighborhood = st.selectbox("近傍", ["moore", "vonneumann"])
+    update_rule = st.selectbox("更新ルール", ["DB", "BD"])
+    V = st.number_input("資源価値 V", value=2.0)
+    C = st.number_input("闘争コスト C", value=4.0)
+    fitness_mapping = st.selectbox("適応度マッピング", ["clip0", "shift"])
+    shift_amount = st.number_input("シフト量", value=0.0)
+    w = st.number_input("選択強度 w", value=1.0)
+    mu = st.number_input("突然変異率 μ", value=0.0)
+    generations = st.number_input("世代数", min_value=1, value=200, step=1)
+    replace_rate = st.slider(
+        "Replacement rate per generation (%)",
+        min_value=0.0,
+        max_value=100.0,
+        value=10.0,
+        step=1.0,
+        help="1世代で全個体のうち何％を置き換えるか"
+    )
+    m = st.number_input("拡散確率 m", value=0.0)
+    init_mode = st.selectbox("初期状態", ["random", "patches"])
+    p0 = st.number_input("初期ホーク比 p0", min_value=0.0, max_value=1.0, value=0.5)
+    num_patches = st.number_input("パッチ数", min_value=1, value=3, step=1)
+    patch_radius = st.number_input("パッチ半径", min_value=1, value=5, step=1)
+    patch_strategy = st.selectbox("パッチ戦略", ["hawk", "dove", "mixed"])
+    draw_skip = st.number_input("描画間隔 (k世代ごと)", min_value=1, value=2, step=1)
+    frame_duration = st.number_input("フレーム時間 (ms)", min_value=20, value=80, step=10)
+    seed = st.number_input("乱数シード", value=0, step=1)
+    log_metrics = st.checkbox("メトリクスを記録", value=False)
 
-    neighborhood = st.radio("Neighborhood", ["Moore", "Von Neumann"], index=0)
-    update_rule = st.radio("Update rule", ["Death–Birth (DB)", "Birth–Death (BD)"], index=0)
+config = {
+    "L": L,
+    "neighborhood": neighborhood,
+    "update_rule": update_rule,
+    "V": V,
+    "C": C,
+    "fitness_mapping": fitness_mapping,
+    "shift_amount": shift_amount,
+    "w": w,
+    "mu": mu,
+    "generations": generations,
+    "replace_rate": replace_rate,
+    "m": m,
+    "init_mode": init_mode,
+    "p0": p0,
+    "num_patches": num_patches,
+    "patch_radius": patch_radius,
+    "patch_strategy": patch_strategy,
+    "draw_skip": draw_skip,
+    "frame_duration": frame_duration,
+    "seed": seed,
+    "log_metrics": log_metrics,
+}
 
     mapping_mode = st.radio("Fitness mapping", ["Clip to zero", "Shift"], index=0,
                             help="Base mapping: f = 1 - w + w * payoff. 'Clip' clamps negatives to 0. 'Shift' adds a constant shift.")
