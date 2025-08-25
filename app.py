@@ -142,17 +142,19 @@ def run_simulation(params):
     payoffs = accumulate_payoffs(state, params["V"], params["C"], offsets)
     if params["log_metrics"]:
         metrics.append((0, np.mean(state == 0), payoffs.mean()))
+    replace_steps = int(L * L * params["replace_rate"] / 100)
     for t in range(1, params["generations"] + 1):
-        fitness = fitness_from_payoff(
-            payoffs, params["w"], params["fitness_mapping"], params["shift_amount"]
-        )
-        if params["update_rule"] == "BD":
-            moran_BD_step(state, fitness, offsets, params["mu"], rng)
-        else:
-            moran_DB_step(state, fitness, offsets, params["mu"], rng)
-        if params["m"] > 0:
-            diffuse(state, params["m"], offsets, rng)
-        payoffs = accumulate_payoffs(state, params["V"], params["C"], offsets)
+        for _ in range(replace_steps):
+            fitness = fitness_from_payoff(
+                payoffs, params["w"], params["fitness_mapping"], params["shift_amount"]
+            )
+            if params["update_rule"] == "BD":
+                moran_BD_step(state, fitness, offsets, params["mu"], rng)
+            else:
+                moran_DB_step(state, fitness, offsets, params["mu"], rng)
+            if params["m"] > 0:
+                diffuse(state, params["m"], offsets, rng)
+            payoffs = accumulate_payoffs(state, params["V"], params["C"], offsets)
         if params["log_metrics"]:
             metrics.append((t, np.mean(state == 0), payoffs.mean()))
         history.append(state.copy())
@@ -211,6 +213,14 @@ with st.sidebar:
     w = st.number_input("選択強度 w", value=1.0)
     mu = st.number_input("突然変異率 μ", value=0.0)
     generations = st.number_input("世代数", min_value=1, value=200, step=1)
+    replace_rate = st.slider(
+        "Replacement rate per generation (%)",
+        min_value=0.0,
+        max_value=100.0,
+        value=10.0,
+        step=1.0,
+        help="1世代で全個体のうち何％を置き換えるか"
+    )
     m = st.number_input("拡散確率 m", value=0.0)
     init_mode = st.selectbox("初期状態", ["random", "patches"])
     p0 = st.number_input("初期ホーク比 p0", min_value=0.0, max_value=1.0, value=0.5)
@@ -233,6 +243,7 @@ config = {
     "w": w,
     "mu": mu,
     "generations": generations,
+    "replace_rate": replace_rate,
     "m": m,
     "init_mode": init_mode,
     "p0": p0,
