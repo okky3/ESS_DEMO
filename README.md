@@ -75,7 +75,3 @@ streamlit run app.py
 詳しくは LICENSE ファイルをご覧ください。
 
 ---
-
-これを丸ごと `README.md` に貼り付ければ、そのまま GitHub で見栄えよく表示されます ✨  
-
-👉 LICENSE ファイル自体も作りますか？（MIT の定型文をコピペするだけでOKです）
